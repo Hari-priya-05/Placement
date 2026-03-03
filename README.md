@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
@@ -72,3 +73,7 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 
 cd C:\Users\harih\placement-portal\frontend
 cd C:\Users\harih\placement-portal\backend
+=======
+# Placement
+This is for the campus recruitment portal repo.
+>>>>>>> ad5d63fb6703beadae23cca340e60ce2b7e78e29
