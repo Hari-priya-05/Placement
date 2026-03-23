@@ -33,7 +33,7 @@ const Navbar = () => {
           <Link to="/" className="flex items-center space-x-2">
             <Briefcase className="h-8 w-8 text-primary-600" />
             <span className="text-xl font-bold text-gray-900">
-              Placement Portal
+              PlaceNexus
             </span>
           </Link>
 

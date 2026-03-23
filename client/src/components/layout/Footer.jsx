@@ -10,10 +10,10 @@ const Footer = () => {
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center space-x-2 mb-4">
               <Briefcase className="h-8 w-8 text-primary-400" />
-              <span className="text-xl font-bold">Placement Portal</span>
+              <span className="text-xl font-bold">PlaceNexus</span>
             </div>
             <p className="text-gray-400 mb-4">
-              AI-Powered Career Placement Portal connecting students with top recruiters.
+              Career Placement Portal connecting students with top recruiters.
             </p>
             <div className="flex space-x-4">
               <a href="#" className="text-gray-400 hover:text-white">
@@ -43,15 +43,15 @@ const Footer = () => {
           <div>
             <h3 className="font-semibold mb-4">Contact Us</h3>
             <ul className="space-y-2 text-gray-400">
-              <li>Email: support@placementportal.com</li>
-              <li>Phone: +1 234 567 890</li>
-              <li>Address: College Campus, City</li>
+              <li>Email: info@placenexus.com</li>
+              <li>Phone: +91 9790534450</li>
+              <li>Address: KRCT , Tiruchirappalli</li>
             </ul>
           </div>
         </div>
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>&copy; {new Date().getFullYear()} Placement Portal. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} PlaceNexus. All rights reserved.</p>
         </div>
       </div>
     </footer>
