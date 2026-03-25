@@ -4,6 +4,7 @@ const {
   applyForJob,
   getStudentApplications,
   getJobApplications,
+  getRecruiterApplications,
   updateApplicationStatus,
   getApplicationStats
 } = require('../controllers/applicationController');
@@ -15,6 +16,7 @@ router.post('/', protect, authorize('student'), applyForJob);
 router.get('/my-applications', protect, authorize('student'), getStudentApplications);
 
 // Recruiter routes
+router.get('/recruiter', protect, authorize('recruiter'), getRecruiterApplications);
 router.get('/job/:jobId', protect, authorize('recruiter', 'tpo'), getJobApplications);
 router.put('/:id', protect, authorize('recruiter', 'tpo'), updateApplicationStatus);
 

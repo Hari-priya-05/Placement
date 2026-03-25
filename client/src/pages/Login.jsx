@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Mail, Lock, Briefcase, Eye, EyeOff, AlertCircle, LogIn, GraduationCap, Building2, UserCog } from 'lucide-react';
+import { Mail, Lock, Briefcase, Eye, EyeOff, AlertCircle, LogIn } from 'lucide-react';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -16,45 +18,19 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Demo credentials
-  const demoAccounts = [
-    {
-      role: 'Student',
-      email: 'student@demo.com',
-      password: 'demo123',
-      icon: GraduationCap,
-      color: 'blue',
-      description: 'View jobs, apply, track applications'
-    },
-    {
-      role: 'Recruiter',
-      email: 'recruiter@demo.com',
-      password: 'demo123',
-      icon: Building2,
-      color: 'green',
-      description: 'Post jobs, manage listings, view applicants'
-    },
-    {
-      role: 'TPO',
-      email: 'tpo@demo.com',
-      password: 'demo123',
-      icon: UserCog,
-      color: 'purple',
-      description: 'Manage students, recruiters, placement drives'
-    }
-  ];
-
   const validateForm = () => {
     const newErrors = {};
     
     if (!formData.email) {
       newErrors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email is invalid';
+      newErrors.email = 'Please enter a valid email address';
     }
     
     if (!formData.password) {
       newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
     
     setErrors(newErrors);
@@ -87,7 +63,7 @@ const Login = () => {
     try {
       const user = await login(formData.email, formData.password);
       
-      switch (user.role) {
+      switch (user?.role) {
         case 'student':
           navigate('/student/dashboard');
           break;
@@ -101,16 +77,10 @@ const Login = () => {
           navigate('/');
       }
     } catch (error) {
-      setLoginError('Invalid email or password. Try demo accounts below!');
+      setLoginError(error.response?.data?.message || 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDemoCredentials = (email, password) => {
-    setFormData({ email, password });
-    setErrors({});
-    setLoginError('');
   };
 
   return (
@@ -127,57 +97,20 @@ const Login = () => {
             Welcome Back
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            Sign in to access your placement portal
+            Sign in to your Placement Portal account
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <Card className="shadow-2xl">
           {/* Error Message */}
           {loginError && (
-            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
+            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded">
               <div className="flex items-center">
                 <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
                 <p className="text-sm text-red-700">{loginError}</p>
               </div>
             </div>
           )}
-
-          {/* Demo Accounts Banner */}
-          <div className="mb-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-100">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <LogIn className="h-4 w-4 mr-2 text-blue-600" />
-              Try Demo Accounts:
-            </h3>
-            <div className="space-y-2">
-              {demoAccounts.map((demo, index) => {
-                const Icon = demo.icon;
-                const colorClasses = {
-                  blue: 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200',
-                  green: 'bg-green-50 text-green-700 hover:bg-green-100 border-green-200',
-                  purple: 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200'
-                };
-                
-                return (
-                  <button
-                    key={index}
-                    onClick={() => fillDemoCredentials(demo.email, demo.password)}
-                    className={`w-full p-3 rounded-lg border transition-all ${colorClasses[demo.color]}`}
-                  >
-                    <div className="flex items-center">
-                      <Icon className="h-5 w-5 mr-3" />
-                      <div className="text-left">
-                        <div className="font-medium">{demo.role}</div>
-                        <div className="text-xs opacity-75">{demo.description}</div>
-                      </div>
-                      <div className="ml-auto text-xs font-mono bg-white bg-opacity-50 px-2 py-1 rounded">
-                        {demo.password}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email Field */}
@@ -202,7 +135,8 @@ const Login = () => {
                       : 'border-gray-300'
                     }
                   `}
-                  placeholder="student@demo.com"
+                  placeholder="you@example.com"
+                  autoComplete="email"
                 />
               </div>
               {errors.email && (
@@ -233,6 +167,7 @@ const Login = () => {
                     }
                   `}
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
@@ -251,11 +186,32 @@ const Login = () => {
               )}
             </div>
 
+            {/* Remember Me & Forgot Password */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                  Remember me
+                </label>
+              </div>
+
+              <div className="text-sm">
+                <a href="#" className="font-medium text-blue-600 hover:text-blue-500">
+                  Forgot password?
+                </a>
+              </div>
+            </div>
+
             {/* Submit Button */}
-            <button
+            <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all transform hover:scale-105"
+              className="w-full py-3 text-lg font-semibold"
             >
               {loading ? (
                 <div className="flex items-center justify-center">
@@ -268,17 +224,17 @@ const Login = () => {
                   Sign In
                 </div>
               )}
-            </button>
+            </Button>
           </form>
 
-          {/* Demo Info */}
-          <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-            <p className="text-sm text-yellow-800 flex items-center">
-              <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-              This is a demo version. No database required! Click any demo account above to login instantly.
-            </p>
-          </div>
-        </div>
+          {/* Register Link */}
+          <p className="mt-8 text-center text-sm text-gray-600">
+            Don't have an account?{' '}
+            <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
+              Create an account
+            </Link>
+          </p>
+        </Card>
       </div>
     </div>
   );

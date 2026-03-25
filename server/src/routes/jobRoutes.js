@@ -6,12 +6,14 @@ const {
   createJob,
   updateJob,
   deleteJob,
-  getRecruiterJobs
+  getRecruiterJobs,
+  searchJobs
 } = require('../controllers/jobController');
 
 const router = express.Router();
 
 router.get('/', protect, getAllJobs);
+router.get('/search', protect, searchJobs);
 router.get('/my-jobs', protect, authorize('recruiter'), getRecruiterJobs);
 router.get('/:id', protect, getJobById);
 router.post('/', protect, authorize('recruiter', 'tpo'), createJob);

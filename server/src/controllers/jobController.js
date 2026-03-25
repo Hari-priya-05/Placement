@@ -1,24 +1,17 @@
-const { supabase } = require('../config/supabase');
+const { Job } = require('../models');
 
 const getAllJobs = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('*, recruiters(*)')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to fetch jobs' 
-      });
-    }
+    const jobs = await Job.find({ status: 'active' })
+      .populate('recruiter', 'name email')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      data: { jobs: data }
+      data: { jobs: jobs }
     });
   } catch (error) {
+    console.error('Error fetching jobs:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch jobs' 
@@ -30,13 +23,10 @@ const getJobById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('*, recruiters(*)')
-      .eq('id', id)
-      .single();
+    const job = await Job.findById(id)
+      .populate('recruiter', 'name email phone');
 
-    if (error) {
+    if (!job) {
       return res.status(404).json({ 
         success: false, 
         message: 'Job not found' 
@@ -45,9 +35,10 @@ const getJobById = async (req, res) => {
 
     res.json({
       success: true,
-      data: { job: data }
+      data: { job: job }
     });
   } catch (error) {
+    console.error('Error fetching job:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch job' 
@@ -57,41 +48,46 @@ const getJobById = async (req, res) => {
 
 const createJob = async (req, res) => {
   try {
-    const { title, company, description, skills_required, salary, deadline } = req.body;
+    const {
+      title,
+      description,
+      company,
+      location,
+      salary,
+      jobType,
+      experienceLevel,
+      skills,
+      requirements,
+      responsibilities,
+      openings,
+      deadline
+    } = req.body;
 
-    const { data: recruiter } = await supabase
-      .from('recruiters')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .single();
+    const job = new Job({
+      title,
+      description,
+      company,
+      location,
+      salary,
+      jobType,
+      experienceLevel,
+      skills,
+      requirements,
+      responsibilities,
+      openings,
+      deadline,
+      recruiter: req.user._id
+    });
 
-    const { data, error } = await supabase
-      .from('jobs')
-      .insert([{
-        title,
-        company,
-        description,
-        skills_required,
-        salary,
-        deadline,
-        recruiter_id: recruiter.id
-      }])
-      .select()
-      .single();
-
-    if (error) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to create job' 
-      });
-    }
+    await job.save();
 
     res.status(201).json({
       success: true,
-      data: { job: data },
+      data: { job: job },
       message: 'Job created successfully'
     });
   } catch (error) {
+    console.error('Error creating job:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to create job' 
@@ -104,26 +100,26 @@ const updateJob = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
-    const { data, error } = await supabase
-      .from('jobs')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+    const job = await Job.findByIdAndUpdate(
+      id,
+      updates,
+      { new: true, runValidators: true }
+    );
 
-    if (error) {
-      return res.status(500).json({ 
+    if (!job) {
+      return res.status(404).json({ 
         success: false, 
-        message: 'Failed to update job' 
+        message: 'Job not found' 
       });
     }
 
     res.json({
       success: true,
-      data: { job: data },
+      data: { job: job },
       message: 'Job updated successfully'
     });
   } catch (error) {
+    console.error('Error updating job:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to update job' 
@@ -135,15 +131,12 @@ const deleteJob = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { error } = await supabase
-      .from('jobs')
-      .delete()
-      .eq('id', id);
+    const job = await Job.findByIdAndDelete(id);
 
-    if (error) {
-      return res.status(500).json({ 
+    if (!job) {
+      return res.status(404).json({ 
         success: false, 
-        message: 'Failed to delete job' 
+        message: 'Job not found' 
       });
     }
 
@@ -152,6 +145,7 @@ const deleteJob = async (req, res) => {
       message: 'Job deleted successfully'
     });
   } catch (error) {
+    console.error('Error deleting job:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to delete job' 
@@ -161,33 +155,62 @@ const deleteJob = async (req, res) => {
 
 const getRecruiterJobs = async (req, res) => {
   try {
-    const { data: recruiter } = await supabase
-      .from('recruiters')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .single();
-
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('recruiter_id', recruiter.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to fetch jobs' 
-      });
-    }
+    const jobs = await Job.find({ recruiter: req.user._id })
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      data: { jobs: data }
+      data: { jobs: jobs }
     });
   } catch (error) {
+    console.error('Error fetching recruiter jobs:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch jobs' 
+    });
+  }
+};
+
+const searchJobs = async (req, res) => {
+  try {
+    const { query, location, jobType, experienceLevel } = req.query;
+    
+    let filter = { status: 'active' };
+    
+    if (query) {
+      filter.$or = [
+        { title: { $regex: query, $options: 'i' } },
+        { company: { $regex: query, $options: 'i' } },
+        { description: { $regex: query, $options: 'i' } },
+        { skills: { $in: [new RegExp(query, 'i')] } }
+      ];
+    }
+    
+    if (location) {
+      filter.location = { $regex: location, $options: 'i' };
+    }
+    
+    if (jobType) {
+      filter.jobType = jobType;
+    }
+    
+    if (experienceLevel) {
+      filter.experienceLevel = experienceLevel;
+    }
+
+    const jobs = await Job.find(filter)
+      .populate('recruiter', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      data: { jobs: jobs }
+    });
+  } catch (error) {
+    console.error('Error searching jobs:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to search jobs' 
     });
   }
 };
@@ -198,5 +221,6 @@ module.exports = {
   createJob,
   updateJob,
   deleteJob,
-  getRecruiterJobs
+  getRecruiterJobs,
+  searchJobs
 };

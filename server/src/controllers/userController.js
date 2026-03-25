@@ -1,32 +1,12 @@
-const { supabase } = require('../config/supabase');
+const { User } = require('../models');
 
 const getProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
 
-    let query = supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    const user = await User.findById(userId);
 
-    if (req.user.role === 'student') {
-      query = supabase
-        .from('users')
-        .select('*, students(*)')
-        .eq('id', userId)
-        .single();
-    } else if (req.user.role === 'recruiter') {
-      query = supabase
-        .from('users')
-        .select('*, recruiters(*)')
-        .eq('id', userId)
-        .single();
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
+    if (!user) {
       return res.status(404).json({ 
         success: false, 
         message: 'User not found' 
@@ -35,9 +15,10 @@ const getProfile = async (req, res) => {
 
     res.json({
       success: true,
-      data: { user: data }
+      data: { user: user }
     });
   } catch (error) {
+    console.error('Error fetching profile:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch profile' 
@@ -47,41 +28,34 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { name, department, year, skills, cgpa, resume_url, portfolio, company_name, website, hr_name } = req.body;
+    const userId = req.user._id;
+    const { name, phone, department, year, skills, cgpa, resume_url, portfolio, company_name, website, hr_name } = req.body;
 
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .update({ name, department, year })
-      .eq('id', userId)
-      .select()
-      .single();
+    // Build update object
+    const updateFields = {};
+    if (name) updateFields.name = name;
+    if (phone) updateFields.phone = phone;
 
-    if (userError) {
-      return res.status(500).json({ 
+    const user = await User.findByIdAndUpdate(
+      userId,
+      updateFields,
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ 
         success: false, 
-        message: 'Failed to update profile' 
+        message: 'User not found' 
       });
-    }
-
-    if (req.user.role === 'student') {
-      await supabase
-        .from('students')
-        .update({ skills, cgpa, resume_url, portfolio })
-        .eq('user_id', userId);
-    } else if (req.user.role === 'recruiter') {
-      await supabase
-        .from('recruiters')
-        .update({ company_name, website, hr_name })
-        .eq('user_id', userId);
     }
 
     res.json({
       success: true,
-      data: { user: userData },
+      data: { user: user },
       message: 'Profile updated successfully'
     });
   } catch (error) {
+    console.error('Error updating profile:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to update profile' 
@@ -91,24 +65,16 @@ const updateProfile = async (req, res) => {
 
 const getAllStudents = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*, students(*)')
-      .eq('role', 'student')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to fetch students' 
-      });
-    }
+    const students = await User.find({ role: 'student' })
+      .sort({ createdAt: -1 })
+      .select('-password');
 
     res.json({
       success: true,
-      data: { students: data }
+      data: { students: students }
     });
   } catch (error) {
+    console.error('Error fetching students:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch students' 
@@ -118,27 +84,76 @@ const getAllStudents = async (req, res) => {
 
 const getAllRecruiters = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*, recruiters(*)')
-      .eq('role', 'recruiter')
-      .order('created_at', { ascending: false });
+    const recruiters = await User.find({ role: 'recruiter' })
+      .sort({ createdAt: -1 })
+      .select('-password');
 
-    if (error) {
-      return res.status(500).json({ 
+    res.json({
+      success: true,
+      data: { recruiters: recruiters }
+    });
+  } catch (error) {
+    console.error('Error fetching recruiters:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch recruiters' 
+    });
+  }
+};
+
+const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find()
+      .sort({ createdAt: -1 })
+      .select('-password');
+
+    res.json({
+      success: true,
+      data: { users: users }
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch users' 
+    });
+  }
+};
+
+const deleteUser = async (req, res) => {
+  try {
+    const userIdToDelete = req.params.id;
+    const requestingUser = req.user;
+
+    // Authorization check: only allow self-deletion OR TPOs deleting others
+    const isSelfDeletion = userIdToDelete === requestingUser._id.toString();
+    const isTPO = requestingUser.role === 'tpo';
+    
+    if (!isSelfDeletion && !isTPO) {
+      return res.status(403).json({ 
         success: false, 
-        message: 'Failed to fetch recruiters' 
+        message: 'Not authorized to delete this user. You can only delete your own account.' 
+      });
+    }
+
+    const user = await User.findByIdAndDelete(userIdToDelete);
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
       });
     }
 
     res.json({
       success: true,
-      data: { recruiters: data }
+      message: 'User deleted successfully'
     });
   } catch (error) {
+    console.error('Error deleting user:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to fetch recruiters' 
+      message: 'Failed to delete user' 
     });
   }
 };
@@ -147,5 +162,7 @@ module.exports = {
   getProfile,
   updateProfile,
   getAllStudents,
-  getAllRecruiters
+  getAllRecruiters,
+  getAllUsers,
+  deleteUser
 };

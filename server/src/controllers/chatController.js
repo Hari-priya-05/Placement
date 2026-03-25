@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { supabase } = require('../config/supabase');
+const { ChatHistory, User } = require('../models');
 const AppError = require('../utils/AppError');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -7,23 +7,21 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const sendMessage = async (req, res, next) => {
   try {
     const { message } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     if (!message) {
       return next(new AppError('Message is required', 400));
     }
 
     // Get user context
-    const { data: userData } = await supabase
-      .from('users')
-      .select('*, students(*)')
-      .eq('id', userId)
-      .single();
+    const userData = await User.findById(userId);
 
     // Prepare context for AI
     let context = '';
-    if (userData?.role === 'student' && userData.students) {
-      context = `The user is a ${userData.year}th year ${userData.department} student.`;
+    if (userData?.role === 'student') {
+      context = `The user is a student named ${userData.name}.`;
+    } else if (userData?.role === 'recruiter') {
+      context = `The user is a recruiter named ${userData.name}.`;
     }
 
     // Initialize model
@@ -31,7 +29,7 @@ const sendMessage = async (req, res, next) => {
 
     const prompt = `
       You are a career guidance assistant for a college placement portal.
-      Provide helpful, accurate advice about careers, skills, interviews.
+      Provide helpful, accurate advice about careers, skills, interviews, and job searching.
       Keep responses concise and friendly.
       
       Context: ${context}
@@ -44,12 +42,36 @@ const sendMessage = async (req, res, next) => {
     const response = await result.response;
     const text = response.text();
 
-    // Save to chat history
-    await supabase.from('chat_history').insert([{
-      user_id: userId,
-      message,
-      response: text
-    }]);
+    // Find or create chat history document for user
+    let chatHistory = await ChatHistory.findOne({ user: userId });
+    
+    if (!chatHistory) {
+      chatHistory = new ChatHistory({
+        user: userId,
+        messages: [],
+        context: {
+          userType: userData.role,
+          userName: userData.name
+        }
+      });
+    }
+
+    // Add messages to history
+    chatHistory.messages.push({
+      role: 'user',
+      content: message
+    });
+    chatHistory.messages.push({
+      role: 'assistant',
+      content: text
+    });
+
+    // Keep only last 50 messages
+    if (chatHistory.messages.length > 50) {
+      chatHistory.messages = chatHistory.messages.slice(-50);
+    }
+
+    await chatHistory.save();
 
     res.status(200).json({
       success: true,
@@ -63,24 +85,37 @@ const sendMessage = async (req, res, next) => {
 
 const getHistory = async (req, res, next) => {
   try {
-    const { data, error } = await supabase
-      .from('chat_history')
-      .select('*')
-      .eq('user_id', req.user.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    const chatHistory = await ChatHistory.findOne({ user: req.user._id });
 
-    if (error) {
-      return next(new AppError('Failed to fetch history', 500));
+    if (!chatHistory) {
+      return res.status(200).json({
+        success: true,
+        data: { history: [] }
+      });
     }
 
     res.status(200).json({
       success: true,
-      data: { history: data }
+      data: { history: chatHistory.messages }
     });
   } catch (error) {
-    next(error);
+    console.error('Error fetching chat history:', error);
+    next(new AppError('Failed to fetch history', 500));
   }
 };
 
-module.exports = { sendMessage, getHistory };
+const clearHistory = async (req, res, next) => {
+  try {
+    await ChatHistory.findOneAndDelete({ user: req.user._id });
+
+    res.status(200).json({
+      success: true,
+      message: 'Chat history cleared'
+    });
+  } catch (error) {
+    console.error('Error clearing chat history:', error);
+    next(new AppError('Failed to clear history', 500));
+  }
+};
+
+module.exports = { sendMessage, getHistory, clearHistory };

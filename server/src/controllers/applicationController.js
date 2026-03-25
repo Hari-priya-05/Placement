@@ -1,59 +1,65 @@
-const { supabase } = require('../config/supabase');
+const { Application, Job } = require('../models');
 
 const applyForJob = async (req, res) => {
   try {
-    const { job_id } = req.body;
+    const { jobId, resume, coverLetter, answers } = req.body;
 
-    const { data: student, error: studentError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (studentError) {
+    // Check if job exists
+    const job = await Job.findById(jobId);
+    if (!job) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Student profile not found' 
+        message: 'Job not found' 
       });
     }
 
-    const { data: existing } = await supabase
-      .from('applications')
-      .select('*')
-      .eq('student_id', student.id)
-      .eq('job_id', job_id)
-      .single();
+    // Check if job is still accepting applications
+    if (job.status !== 'active') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'This job is no longer accepting applications' 
+      });
+    }
 
-    if (existing) {
+    // Check if deadline has passed
+    if (job.deadline && new Date(job.deadline) < new Date()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Application deadline has passed' 
+      });
+    }
+
+    // Check for existing application
+    const existingApplication = await Application.findOne({
+      student: req.user._id,
+      job: jobId
+    });
+
+    if (existingApplication) {
       return res.status(400).json({ 
         success: false, 
         message: 'Already applied for this job' 
       });
     }
 
-    const { data, error } = await supabase
-      .from('applications')
-      .insert([{
-        student_id: student.id,
-        job_id,
-        status: 'Applied'
-      }])
-      .select()
-      .single();
+    // Create application
+    const application = new Application({
+      student: req.user._id,
+      job: jobId,
+      resume,
+      coverLetter,
+      answers
+    });
 
-    if (error) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to apply for job' 
-      });
-    }
+    await application.save();
 
     res.status(201).json({
       success: true,
-      data: { application: data },
+      data: { application: application },
       message: 'Applied successfully'
     });
   } catch (error) {
+    console.error('Error applying for job:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to apply for job' 
@@ -63,37 +69,16 @@ const applyForJob = async (req, res) => {
 
 const getStudentApplications = async (req, res) => {
   try {
-    const { data: student, error: studentError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (studentError) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Student profile not found' 
-      });
-    }
-
-    const { data, error } = await supabase
-      .from('applications')
-      .select('*, jobs(*)')
-      .eq('student_id', student.id)
-      .order('applied_at', { ascending: false });
-
-    if (error) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to fetch applications' 
-      });
-    }
+    const applications = await Application.find({ student: req.user._id })
+      .populate('job', 'title company location salary jobType status deadline')
+      .sort({ appliedAt: -1 });
 
     res.json({
       success: true,
-      data: { applications: data }
+      data: { applications: applications }
     });
   } catch (error) {
+    console.error('Error fetching applications:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch applications' 
@@ -105,24 +90,49 @@ const getJobApplications = async (req, res) => {
   try {
     const { jobId } = req.params;
 
-    const { data, error } = await supabase
-      .from('applications')
-      .select('*, students!inner(*, users!inner(*))')
-      .eq('job_id', jobId)
-      .order('applied_at', { ascending: false });
-
-    if (error) {
-      return res.status(500).json({ 
+    // Check if job exists and belongs to the recruiter
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ 
         success: false, 
-        message: 'Failed to fetch applications' 
+        message: 'Job not found' 
       });
     }
 
+    const applications = await Application.find({ job: jobId })
+      .populate('student', 'name email phone')
+      .sort({ appliedAt: -1 });
+
     res.json({
       success: true,
-      data: { applications: data }
+      data: { applications: applications }
     });
   } catch (error) {
+    console.error('Error fetching job applications:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch applications' 
+    });
+  }
+};
+
+const getRecruiterApplications = async (req, res) => {
+  try {
+    // Get all jobs by this recruiter
+    const jobs = await Job.find({ recruiter: req.user._id }).select('_id');
+    const jobIds = jobs.map(job => job._id);
+
+    const applications = await Application.find({ job: { $in: jobIds } })
+      .populate('student', 'name email phone')
+      .populate('job', 'title company location')
+      .sort({ appliedAt: -1 });
+
+    res.json({
+      success: true,
+      data: { applications: applications }
+    });
+  } catch (error) {
+    console.error('Error fetching recruiter applications:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch applications' 
@@ -133,28 +143,34 @@ const getJobApplications = async (req, res) => {
 const updateApplicationStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, notes } = req.body;
 
-    const { data, error } = await supabase
-      .from('applications')
-      .update({ status })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      return res.status(500).json({ 
+    const application = await Application.findById(id);
+    if (!application) {
+      return res.status(404).json({ 
         success: false, 
-        message: 'Failed to update application' 
+        message: 'Application not found' 
       });
     }
 
+    application.status = status;
+    
+    if (notes) {
+      application.notes.push({
+        text: notes,
+        addedBy: req.user._id
+      });
+    }
+
+    await application.save();
+
     res.json({
       success: true,
-      data: { application: data },
+      data: { application: application },
       message: 'Application status updated'
     });
   } catch (error) {
+    console.error('Error updating application:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to update application' 
@@ -164,24 +180,27 @@ const updateApplicationStatus = async (req, res) => {
 
 const getApplicationStats = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('applications')
-      .select('status');
-
-    if (error) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to fetch statistics' 
-      });
+    let filter = {};
+    
+    // If recruiter, only show their jobs
+    if (req.user.role === 'recruiter') {
+      const jobs = await Job.find({ recruiter: req.user._id }).select('_id');
+      const jobIds = jobs.map(job => job._id);
+      filter.job = { $in: jobIds };
+    } else if (req.user.role === 'student') {
+      filter.student = req.user._id;
     }
 
+    const applications = await Application.find(filter).select('status');
+
     const stats = {
-      total: data.length,
-      applied: data.filter(a => a.status === 'Applied').length,
-      shortlisted: data.filter(a => a.status === 'Shortlisted').length,
-      interview: data.filter(a => a.status === 'Interview').length,
-      selected: data.filter(a => a.status === 'Selected').length,
-      rejected: data.filter(a => a.status === 'Rejected').length
+      total: applications.length,
+      pending: applications.filter(a => a.status === 'pending').length,
+      reviewed: applications.filter(a => a.status === 'reviewed').length,
+      shortlisted: applications.filter(a => a.status === 'shortlisted').length,
+      rejected: applications.filter(a => a.status === 'rejected').length,
+      selected: applications.filter(a => a.status === 'selected').length,
+      offered: applications.filter(a => a.status === 'offered').length
     };
 
     res.json({
@@ -189,6 +208,7 @@ const getApplicationStats = async (req, res) => {
       data: { stats }
     });
   } catch (error) {
+    console.error('Error fetching statistics:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch statistics' 
@@ -200,6 +220,7 @@ module.exports = {
   applyForJob,
   getStudentApplications,
   getJobApplications,
+  getRecruiterApplications,
   updateApplicationStatus,
   getApplicationStats
 };
